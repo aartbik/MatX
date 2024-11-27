@@ -10,18 +10,17 @@
 namespace matx {
 
 // General contruct sparse tensor from dense tensor.
-template <typename VAL, typename CRD, typename POS, int DIM, int LVL,
-          typename Storage, typename Desc>
+template <typename VAL, typename CRD, typename POS, int DIM, int LVL>
 sparse_tensor_t<VAL, CRD, POS, DIM, LVL>
-make_sparse_tensor(tensor_t<VAL, DIM, Storage, Desc> const &rhs,
+make_sparse_tensor(tensor_t<VAL, DIM> const &rhs,
                    const TensorFormat<DIM, LVL> &format) {
   MATX_THROW(matxInvalidParameter, "tensor format not implemented yet");
 }
 
 // Specialized for matrices.
-template <typename VAL, typename CRD, typename POS, typename Storage, typename Desc>
+template <typename VAL, typename CRD, typename POS>
 sparse_tensor_t<VAL, CRD, POS, 2, 2>
-make_sparse_tensor(tensor_t<VAL, 2, Storage, Desc> const &rhs,
+make_sparse_tensor(tensor_t<VAL, 2> const &rhs,
                    const TensorFormat<2, 2> &format) {
   // Handle COO.
   if (format.isCOO()) {
@@ -33,8 +32,9 @@ make_sparse_tensor(tensor_t<VAL, 2, Storage, Desc> const &rhs,
           nse++;
       }
     }
-    // TODO: fill the buffers of the sparse tensor
-    return sparse_tensor_t<VAL, CRD, POS, 2, 2>({m,n}, format, {nse, nse, 0, nse, 0});
+    // TODO: fill the buffers of the sparse tensor instead of just setting sizes
+    return sparse_tensor_t<VAL, CRD, POS, 2, 2>({m, n}, format,
+                                                {nse, nse, 0, nse, 0});
   }
   MATX_THROW(matxInvalidParameter, "tensor format not implemented yet");
 }
