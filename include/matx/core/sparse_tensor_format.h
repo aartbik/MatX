@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace matx {
 
 //
@@ -80,20 +82,49 @@ namespace matx {
 //
 enum class LvlType { Dense, Singleton, Compressed, CompressedNonUnique };
 
+static inline std::string toString(LvlType lvl) {
+  switch (lvl) {
+  case LvlType::Dense:
+    return "dense";
+  case LvlType::Singleton:
+    return "singleton";
+  case LvlType::Compressed:
+    return "compressed";
+  case LvlType::CompressedNonUnique:
+    return "compressed(non-unique)";
+  }
+  return "?";
+}
+
 //
 // A level expression consists of an expression in terms of dimension
 // variables. Currently, the following expressions are supported:
 //
-// (1) di          (cj == 1)
-// (2) di * 2
-// (3) di div 2    (floor-div)
-// (4) di mod 2
+// (1) di
+// (2) di div 2
+// (3) di mod 2
 //
 class LvlExpr {
 public:
-  enum LvlOp { Mul, Div, Mod };
-  constexpr LvlExpr(int d) : op(Mul), di(d), cj(1) {}
+  enum LvlOp { Id, Div, Mod };
+
+  constexpr LvlExpr(int d) : op(Id), di(d), cj(1) {}
   constexpr LvlExpr(int d, LvlOp o, int c) : op(o), di(d), cj(c) {}
+
+  constexpr bool isId(int d) const { return op == Id && di == d; }
+
+  std::string toString() const {
+    switch (op) {
+    case Id:
+      return "d" + std::to_string(di);
+    case Div:
+      return "d" + std::to_string(di) + " div " + std::to_string(cj);
+    case Mod:
+      return "d" + std::to_string(di) + " mod " + std::to_string(cj);
+    }
+    return "?";
+  }
+
   const LvlOp op;
   const int di;
   const int cj;
@@ -105,6 +136,11 @@ public:
 class LvlSpec {
 public:
   constexpr LvlSpec(LvlExpr e, LvlType t) : exp(e), typ(t) {}
+
+  std::string toString() const {
+    return exp.toString() + " : " + matx::toString(typ);
+  }
+
   const LvlExpr exp;
   const LvlType typ;
 };
@@ -119,7 +155,7 @@ public:
   template <typename... T> constexpr TensorFormat(T... t) : lvlSpecs{t...} {}
 
   // Get spec at given level.
-  LvlSpec getLvlSpec(int l) const { return lvlSpecs[l]; }
+  constexpr LvlSpec getLvlSpec(int l) const { return lvlSpecs[l]; }
 
   // Translate tensor dimensions to levels.
   template <typename CRD>
@@ -130,6 +166,14 @@ public:
 
   // Debugging.
   void print() const;
+
+  // Format recognizers. Default to false but are specialized
+  // for the actually matching formats below.
+  constexpr bool isScalar() const { return false; }
+  constexpr bool isSpVec() const { return false; }
+  constexpr bool isCOO() const { return false; }
+  constexpr bool isCSR() const { return false; }
+  constexpr bool isCSC() const { return false; }
 
 private:
   const LvlSpec lvlSpecs[LVL];
@@ -142,11 +186,11 @@ CRD *TensorFormat<DIM, LVL>::dim2lvl(const CRD *dims, CRD *lvls,
   for (int l = 0; l < LVL; l++) {
     const LvlSpec &spec = lvlSpecs[l];
     switch (spec.exp.op) {
-    case LvlExpr::Mul:
-      lvls[l] = (dims[spec.exp.di] * spec.exp.cj);
+    case LvlExpr::Id:
+      lvls[l] = dims[spec.exp.di];
       break;
     case LvlExpr::Div:
-      lvls[l] = (dims[spec.exp.di] / spec.exp.cj);
+      lvls[l] = dims[spec.exp.di] / spec.exp.cj;
       break;
     case LvlExpr::Mod:
       lvls[l] = asSize ? spec.exp.cj : (dims[spec.exp.di] % spec.exp.cj);
@@ -154,6 +198,26 @@ CRD *TensorFormat<DIM, LVL>::dim2lvl(const CRD *dims, CRD *lvls,
     }
   }
   return lvls;
+}
+
+template <int DIM, int LVL>
+template <typename CRD>
+CRD *TensorFormat<DIM, LVL>::lvl2dim(const CRD *lvls, CRD *dims) const {
+  for (uint64_t l = 0; l < LVL; l++) {
+    const LvlSpec &spec = lvlSpecs[l];
+    switch (spec.exp.op) {
+    case LvlExpr::Id:
+      dims[spec.exp.di] = lvls[l];
+      break;
+    case LvlExpr::Div:
+      dims[spec.exp.di] = lvls[l] * spec.exp.cj;
+      break;
+    case LvlExpr::Mod:
+      dims[spec.exp.di] += lvls[l]; // seen second
+      break;
+    }
+  }
+  return dims;
 }
 
 template <int DIM, int LVL> void TensorFormat<DIM, LVL>::print() const {
@@ -165,41 +229,38 @@ template <int DIM, int LVL> void TensorFormat<DIM, LVL>::print() const {
   }
   std::cout << " ) -> (";
   for (int l = 0; l < LVL; l++) {
-    const LvlSpec &spec = lvlSpecs[l];
-    std::cout << " d" << spec.exp.di;
-    switch (spec.exp.op) {
-    case LvlExpr::Mul:
-      if (spec.exp.cj != 1) {
-        std::cout << " * " << spec.exp.cj;
-      }
-      break;
-    case LvlExpr::Div:
-      std::cout << " div " << spec.exp.cj;
-      break;
-    case LvlExpr::Mod:
-      std::cout << " mod " << spec.exp.cj;
-      break;
-    }
-    std::cout << " : ";
-    switch (spec.typ) {
-    case LvlType::Dense:
-      std::cout << "dense";
-      break;
-    case LvlType::Singleton:
-      std::cout << "singleton";
-      break;
-    case LvlType::Compressed:
-      std::cout << "compressed";
-      break;
-    case LvlType::CompressedNonUnique:
-      std::cout << "compressed(non-unique)";
-      break;
-    }
+    std::cout << lvlSpecs[l].toString();
     if (l != LVL - 1)
       std::cout << ",";
   }
   std::cout << " )" << std::endl;
 };
+
+//
+// Specialized recognizers.
+//
+
+template <> constexpr bool TensorFormat<0, 0>::isScalar() const { return true; }
+
+template <> constexpr bool TensorFormat<1, 1>::isSpVec() const {
+  return getLvlSpec(0).typ == LvlType::Compressed && getLvlSpec(0).exp.isId(0);
+}
+
+template <> constexpr bool TensorFormat<2, 2>::isCOO() const {
+  return getLvlSpec(0).typ == LvlType::CompressedNonUnique &&
+         getLvlSpec(0).exp.isId(0) && getLvlSpec(1).typ == LvlType::Singleton &&
+         getLvlSpec(1).exp.isId(1);
+}
+
+template <> constexpr bool TensorFormat<2, 2>::isCSR() const {
+  return getLvlSpec(0).typ == LvlType::Dense && getLvlSpec(0).exp.isId(0) &&
+         getLvlSpec(1).typ == LvlType::Compressed && getLvlSpec(1).exp.isId(1);
+}
+
+template <> constexpr bool TensorFormat<2, 2>::isCSC() const {
+  return getLvlSpec(0).typ == LvlType::Dense && getLvlSpec(0).exp.isId(1) &&
+         getLvlSpec(1).typ == LvlType::Compressed && getLvlSpec(1).exp.isId(0);
+}
 
 //
 // Predefined common tensor formats. Note that even though the tensor format

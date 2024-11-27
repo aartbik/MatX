@@ -18,14 +18,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
   constexpr index_t m = 3;
   constexpr index_t n = 3;
 
-  tensor_t<float, rank> a{{m, n}};
-  a.SetVals({{10,0,0}, {0,20,0}, {30,40,0}});
-  print(a);
-  
-  constexpr index_t dimRank = rank;
-  constexpr index_t lvlRank = rank;
-  sparse_tensor_t<float, int, int, dimRank, lvlRank> As(a);
-  As.print();
+  tensor_t<float, rank> A{{m, n}};
+  A.SetVals({{10,0,0}, {0,20,0}, {30,40,0}});
+  print(A);
+ 
+  auto As = make_sparse_tensor<float, int, int>(A, COO);
+  std::cout << As.str() << " nse=" << As.getNse() << std::endl;
+//print(As); // make this work
 
   MATX_EXIT_HANDLER();
 }

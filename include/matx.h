@@ -46,6 +46,7 @@
 #include "matx/core/pybind.h"
 #include "matx/core/tensor.h"
 #include "matx/core/sparse_tensor.h"
+#include "matx/core/make_sparse_tensor.h"
 #include "matx/core/tie.h"
 #include "matx/core/utils.h"
 #include "matx/core/viz.h"

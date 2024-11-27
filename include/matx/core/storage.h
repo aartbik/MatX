@@ -391,8 +391,8 @@ namespace matx
 
     /**
      * @brief Get size of container in bytes
-     * 
-     * @return Size in bytes 
+     *
+     * @return Size in bytes
      */
     size_t size() const
     {
@@ -588,6 +588,16 @@ namespace matx
     __MATX_INLINE__ T* allocate(size_t size)
     {
       return container_.allocate(size);
+    }
+
+    /**
+     * @brief Get size of container in bytes
+     * 
+     * @return Size in bytes 
+     */
+    __MATX_INLINE__ auto size() const
+    {
+      return container_.size();
     }
 
     /**

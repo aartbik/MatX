@@ -1,27 +1,11 @@
 #pragma once
 
-#include <atomic>
-#include <cinttypes>
-#include <cstdint>
-#include <iomanip>
-#include <memory>
-#include <numeric>
-#include <type_traits>
+#include <string>
 
-#include "matx/core/allocator.h"
-#include "matx/core/dlpack.h"
-#include "matx/core/error.h"
 #include "matx/core/sparse_tensor_format.h"
 #include "matx/core/storage.h"
 #include "matx/core/tensor_impl.h"
 #include "matx/core/tensor_utils.h"
-#include "matx/core/tie.h"
-#include "matx/kernels/utility.cuh"
-
-// forward declare
-namespace matx {
-template <typename T, int RANK, typename Storage, typename Desc> class tensor_t;
-} // namespace matx
 
 namespace matx {
 
@@ -38,153 +22,74 @@ template <typename VAL, typename CRD, typename POS, int DIM, int LVL,
           typename DimDesc = DefaultDescriptor<DIM>>
 class sparse_tensor_t : public detail::tensor_impl_t<VAL, DIM, DimDesc> {
 public:
-  // TODO: throw-away code just for demo,
-  //       provide make_sparse_tensor()s instead
-  __MATX_HOST__ sparse_tensor_t(tensor_t<VAL, DIM> &rhs) noexcept
-      : detail::tensor_impl_t<VAL, DIM, DimDesc>(rhs.Shape()), format(COO),
-        nse_(0), values_{typename StorageV::container{sizeof(VAL)}} {
-    // Initialize coordinates and positions arrays containers.
-    for (int l = 0; l < LVL; l++) {
-      coordinates_[l] = typename StorageC::container{sizeof(CRD)};
-      positions_[l] = typename StorageP::container{sizeof(POS)};
+  //
+  // Constructs a sparse tensor with given shape, format, and storage sizes.
+  // The storage sizes denote the static capacity needed for the values and,
+  // in level order, the coordinates and positions.
+  //
+  // Most users should not use this constructor directly. Instead use
+  // the "make_sparse_tensor" methods.
+  //
+  // A sample constructor call is
+  //
+  //   sparse_tensor_t<float, int, int, 2, 2>
+  //      As({m,n}, COO, {10,10,0,10,0});
+  //
+  // which constructs a m x n sparse matrix As in coordinate scheme format
+  // (both dimension and level rank are 2) with 10 nonzero elements of type
+  // float (the values) and 10 coordinates for dim-0 and dim-1 of type int
+  // (in the crd[0] and crd[1] arrays). The positions are unused for COO.
+  //
+  __MATX_INLINE__
+  sparse_tensor_t(const typename DimDesc::shape_type (&shape)[DIM],
+                  const TensorFormat<DIM, LVL> &f,
+                  const index_t (&sizes)[2 * LVL + 1])
+      : detail::tensor_impl_t<VAL, DIM, DimDesc>(shape), format(f),
+        values_{typename StorageV::container{sizes[0] * sizeof(VAL)}} {
+    // Initialize coordinates and positions arrays with own containers.
+    for (int l = 0, s = 1; l < LVL; l++) {
+      const index_t csz = sizes[s++];
+      if (csz)
+        coordinates_[l] = typename StorageC::container{csz * sizeof(CRD)};
+      const index_t psz = sizes[s++];
+      if (psz)
+        positions_[l] = typename StorageP::container{psz * sizeof(POS)};
     }
-    // Count NSE.
-    for (size_t i = 0, ie = rhs.Size(0); i < ie; i++) {
-      for (size_t j = 0, je = rhs.Size(1); j < je; j++) {
-        if (rhs(i, j) != 0)
-          nse_++;
-      }
-    }
-    // TODO: Demo COO (but will be much more general!).
-    coordinates_[0].allocate(nse_);
-    coordinates_[1].allocate(nse_);
-    values_.allocate(nse_);
-    CRD *ibuf = coordinates_[0].data();
-    CRD *jbuf = coordinates_[1].data();
-    VAL *vbuf = values_.data();
-    size_t k = 0;
-    for (size_t i = 0, ie = rhs.Size(0); i < ie; i++) {
-      for (size_t j = 0, je = rhs.Size(1); j < je; j++) {
-        if (rhs(i, j) != 0) {
-          // TODO: is this safe? are buffers on host still?
-          ibuf[k] = static_cast<CRD>(i);
-          jbuf[k] = static_cast<CRD>(j);
-          vbuf[k] = rhs(i, j);
-          k++;
-        }
-      }
-    }
-    assert(k == nse_);
     // Superclass tensor_impl has DimDesc and values_ pointer
-    // TODO: what about the others?
+    //
+    // TODO(cliff): what about the others?
+    //
     this->SetLocalData(values_.data());
   }
 
+  // Default destructor.
   __MATX_INLINE__ ~sparse_tensor_t() = default;
 
+  // Identifying string.
   __MATX_INLINE__ const std::string str() const {
-    return std::string("SpT") + std::to_string(LVL) + ":" +
+    return std::string("SpT") + std::to_string(DIM) + ":" +
            std::to_string(LVL) + "_" + detail::to_short_str<VAL>() + "_" +
            detail::to_short_str<CRD>() + "_" + detail::to_short_str<POS>();
   }
 
-  // For debugging.
-  void print(size_t num = 16) {
-    // TODO: I am not sure yet if we need LvlDesc stored on device
-    //       too; for now I am just mapping DimDesc to dims/lvls.
-    // Prepare dim and lvl sizes.
-    size_t dims[DIM];
-    size_t lvls[LVL];
-    for (int d = 0; d < DIM; d++) {
-      dims[d] = this->Size(d);
-    }
-    format.dim2lvl(dims, lvls, /*asSize=*/true);
-    // Dump explicit and implicit contents.
-    size_t sz = 1;
-    size_t bytes = nse_ * sizeof(VAL);
-    std::cout << "---- Sparse Tensor<" << detail::to_short_str<VAL>() << ","
-              << detail::to_short_str<CRD>() << ","
-              << detail::to_short_str<POS>() << ">" << std::endl;
-    std::cout << "nse      : " << nse_ << std::endl;
-    std::cout << "dim      : ";
-    for (int d = 0; d < DIM; d++) {
-      sz *= this->Size(d);
-      std::cout << " " << dims[d];
-      if (d != LVL - 1)
-        std::cout << " x";
-    }
-    std::cout << std::endl;
-    std::cout << "lvl      : ";
-    for (int l = 0; l < LVL; l++) {
-      std::cout << " " << lvls[l];
-      if (l != LVL - 1)
-        std::cout << " x";
-    }
-    std::cout << std::endl;
-    std::cout << "format   : ";
-    format.print();
-    for (int r = 0; r < LVL; r++) {
-      if (size_t e = 0) { // TODO: how?
-        bytes += e * sizeof(POS);
-        std::cout << "pos[" << r << "]   : (";
-        for (size_t i = 0; i < e; i++) {
-          if (i > num) {
-            std::cout << " ...";
-            break;
-          }
-          std::cout << " " << positions_[r].data()[i];
-        }
-        std::cout << " ) #" << e << std::endl;
-      }
-      if (size_t e = nse_) { // TODO: how?
-        bytes += e * sizeof(CRD);
-        std::cout << "crd[" << r << "]   : (";
-        for (size_t i = 0; i < e; i++) {
-          if (i > num) {
-            std::cout << " ...";
-            break;
-          }
-          std::cout << " " << coordinates_[r].data()[i];
-        }
-        std::cout << " ) #" << e << std::endl;
-      }
-    }
-    std::cout << "values   : (";
-    for (size_t i = 0; i < nse_; i++) {
-      if (i > num) {
-        std::cout << " ...";
-        break;
-      }
-      std::cout << " " << (values_.data()[i]);
-    }
-    std::cout << " ) #" << nse_ << std::endl;
-    std::cout << "data     : " << bytes << " bytes" << std::endl;
-    const double sparsity =
-        100.0 - (100.0 * static_cast<double>(nse_)) / static_cast<double>(sz);
-    std::cout << "sparsity : " << sparsity << "%" << std::endl;
-    std::cout << "----" << std::endl;
-  }
-
-  // TODO: replace with type trait logic
-  bool is_sparse() const { return true; }
+  // Number of stored elements.
+  index_t getNse() const { return values_.size() / sizeof(VAL); }
 
 private:
-  // Metadata the describes how sparse tensor is stored. It provides
-  // an implicit mapping from the dimensions to the levels (and back).
+  // The tensor format describes how a sparse tensor is stored. It
+  // provides an implicit mapping from the tensor dimensions to the
+  // tensor levels (and the inverse back).
   const TensorFormat<DIM, LVL> format;
-
-  // Number of expliclitly stored elements (essentially size of values_).
-  size_t nse_;
 
   // Primary storage of sparse tensor (explicitly stored element values).
   StorageV values_;
 
-  // Secondary storage of sparse tensor (positions and coordinates).
+  // Secondary storage of sparse tensor (coordinates and positions).
   // There is potentially one for each level, although some of these
   // may remain empty. The secondary storage is essential to determine
   // where in the original tensor the explicitly stored elements reside.
-  StorageP positions_[LVL];
   StorageC coordinates_[LVL];
+  StorageP positions_[LVL];
 };
 
 } // end namespace matx
