@@ -229,7 +229,7 @@ template <int DIM, int LVL> void TensorFormat<DIM, LVL>::print() const {
   }
   std::cout << " ) -> (";
   for (int l = 0; l < LVL; l++) {
-    std::cout << lvlSpecs[l].toString();
+    std::cout << " " << lvlSpecs[l].toString();
     if (l != LVL - 1)
       std::cout << ",";
   }

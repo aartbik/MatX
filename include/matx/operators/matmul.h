@@ -36,6 +36,7 @@
 #include "matx/core/type_utils.h"
 #include "matx/operators/base_operator.h"
 #include "matx/transforms/matmul/matmul_cuda.h"
+#include "matx/transforms/matmul/matmul_cusparse.h"
 #ifdef MATX_EN_CPU_MATMUL
   #include "matx/transforms/matmul/matmul_cblas.h"
 #endif
@@ -113,6 +114,19 @@ namespace matx
 
         template <typename Out, typename Executor>
         void Exec(Out &&out, Executor &&ex) const {
+
+	  //
+          // TODO(cliff): how to properly dispatch?
+	  //
+          // TODO(cliff): constexpr test to avoid non-tensors as a_
+	  //
+          if constexpr (is_tensor_view_v<OpA>) {
+            if (a_.str().find("SparseT", 0) == 0) {
+              sparse_matmul_impl(cuda::std::get<0>(out), a_, b_, ex, alpha_, beta_);
+	      return;
+	    }
+	  }
+
           if constexpr (!std::is_same_v<PermDims, no_permute_t>) {
             matmul_impl(permute(cuda::std::get<0>(out), perm_), a_, b_, ex, alpha_, beta_);
           }

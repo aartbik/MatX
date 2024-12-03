@@ -55,11 +55,13 @@ public:
       if (psz)
         positions_[l] = typename StorageP::container{psz * sizeof(POS)};
     }
-    // Superclass tensor_impl has DimDesc and values_ pointer
+    // Superclass tensor_impl has DimDesc and the
+    // values_ and 2 x coordinates_ pointers (for COO)
     //
     // TODO(cliff): what about the others?
     //
-    this->SetLocalData(values_.data());
+    this->SetLocalDataExtra(values_.data(), (int *)coordinates_[0].data(),
+                            (int *)coordinates_[1].data());
   }
 
   // Default destructor.
@@ -67,7 +69,7 @@ public:
 
   // Identifying string.
   __MATX_INLINE__ const std::string str() const {
-    return std::string("SpT") + std::to_string(DIM) + ":" +
+    return std::string("SparseT") + std::to_string(DIM) + ":" +
            std::to_string(LVL) + "_" + detail::to_short_str<VAL>() + "_" +
            detail::to_short_str<CRD>() + "_" + detail::to_short_str<POS>();
   }
@@ -75,10 +77,24 @@ public:
   // Number of stored elements.
   index_t getNse() const { return values_.size() / sizeof(VAL); }
 
+  //
+  // TODO(cliff): how to do this better in make_sparse_tensor methods
+  //
+  void setHack(index_t k, CRD i, CRD j, VAL val) {
+    coordinates_[0].data()[k] = i;
+    coordinates_[1].data()[k] = j;
+    values_.data()[k] = val;
+  }
+
 private:
   // The tensor format describes how a sparse tensor is stored. It
   // provides an implicit mapping from the tensor dimensions to the
   // tensor levels (and the inverse back).
+  //
+  // TODO(cliff): can we make this part of the template (it is constexpr)
+  //              so that the code is specialized and we don't need to
+  //              store this on the device?
+  //
   const TensorFormat<DIM, LVL> format;
 
   // Primary storage of sparse tensor (explicitly stored element values).

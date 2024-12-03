@@ -1069,6 +1069,16 @@ IGNORE_WARNING_POP_GCC
       return ldata_;
     }
 
+    //
+    // TODO(cliff): just for getting this working
+    //
+    __MATX_INLINE__ __MATX_HOST__ __MATX_DEVICE__  auto IData() const noexcept {
+      return idata_;
+    }
+    __MATX_INLINE__ __MATX_HOST__ __MATX_DEVICE__  auto JData() const noexcept {
+      return jdata_;
+    }
+
 
     /**
      * @brief Set local data pointer
@@ -1078,6 +1088,15 @@ IGNORE_WARNING_POP_GCC
      */
     void SetLocalData(T* data) {
       ldata_ = data;
+    }
+
+    //
+    // TODO(cliff): just for getting this working
+    //
+    void SetLocalDataExtra(T* data, int *idata, int *jdata) {
+      ldata_ = data;
+      idata_ = idata;
+      jdata_ = jdata;
     }
 
     template <typename ShapeType, typename Executor>
@@ -1093,6 +1112,8 @@ IGNORE_WARNING_POP_GCC
 
   protected:
     T *ldata_;
+    int *idata_;
+    int *jdata_;
     Desc desc_;
 };
 
