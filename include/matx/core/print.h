@@ -592,7 +592,7 @@ namespace matx {
         for (index_t i = 0; i < nse; i++) {
           PrintVal(fp, op.Data()[i]);
         }
-        fprintf(fp, ")\nspace  = %d\n", static_cast<int>(GetPointerKind(op.Data())));
+        fprintf(fp, ")\nspace  = %s\n", SpaceString(GetPointerKind(op.Data())).c_str());
       }
       else if constexpr (is_tensor_view_v<Op>) {
         // If the user is printing a tensor with a const pointer underlying the data, we need to do the lookup

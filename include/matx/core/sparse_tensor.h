@@ -75,7 +75,7 @@ public:
   // Most users should *not* use this constructor directly, since it depends
   // on intricate knowledge of the storage formats. Instead, users should
   // use the "make_sparse_tensor" methods that provide factory methods in
-  // terms of more storage formats that are more familiar (COO, CSR, etc).
+  // terms of storage formats that are more familiar (COO, CSR, etc).
   //
   __MATX_INLINE__
   sparse_tensor_t(const typename DimDesc::shape_type (&shape)[DIM],

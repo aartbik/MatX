@@ -77,7 +77,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
   // crd[0] = ( 0  0  3  3  3 )
   // crd[1] = ( 0  1  2  3  5 )
   // values = ( 1.0000e+00  2.0000e+00  3.0000e+00  4.0000e+00  5.0000e+00 )
-  // space  = 0
+  // space  = CUDA managed memory
   //
   print(Acoo);
 
